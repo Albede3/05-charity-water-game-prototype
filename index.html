@@ -1,13 +1,245 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Charity Water Game</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <title>Water Drop Catch - Charity: Water</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background: #f4fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+    }
+    h1 {
+      color: #008fd5;
+      margin-top: 20px;
+    }
+    #gameArea {
+      position: relative;
+      width: 350px;
+      height: 500px;
+      background: #b2e0f7;
+      border: 4px solid #008fd5;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 6px 24px #008fd533;
+      margin-bottom: 12px;
+    }
+    #bucket {
+      position: absolute;
+      bottom: 10px;
+      width: 80px;
+      height: 40px;
+      background: #fcf7dd;
+      border: 4px solid #e0c155;
+      border-radius: 0 0 40px 40px;
+      left: 135px;
+      box-shadow: 0 2px 8px #e0c15566;
+      transition: left 0.05s;
+    }
+      .drop {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    background: #008fd5;
+    border-radius: 50% 50% 65% 65% / 55% 55% 100% 100%;
+    box-shadow: 0 3px 8px #008fd599;
+}
+
+    @keyframes dropFall {
+      from { top: -32px; }
+      to { top: 480px; }
+    }
+    #scoreboard {
+      display: flex;
+      gap: 30px;
+      font-size: 1.15rem;
+      margin-bottom: 12px;
+    }
+    #factBox {
+      background: #fff3c1;
+      color: #856404;
+      border: 2px solid #ffe18d;
+      border-radius: 10px;
+      padding: 10px 20px;
+      position: fixed;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 6px 30px #85640422;
+      z-index: 10;
+      display: none;
+    }
+    #restartBtn {
+      background: #ffbe3b;
+      color: #004768;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 1rem;
+      margin-top: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #restartBtn:hover { background: #ffe18d; }
+    @media (max-width: 400px) {
+      #gameArea { width: 98vw; height: 66vw; min-height: 320px; }
+      #bucket { width: 20vw; height: 10vw; min-width: 50px; min-height: 22px; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Welcome to the Charity Water Game Prototype</h1>
-    <script src="script.js"></script>
+  <h1>💧 Water Drop Catch 💧</h1>
+  <div id="scoreboard">
+    <span id="score">Score: 0</span>
+    <span id="misses">Misses: 0 / 5</span>
+  </div>
+  <div id="gameArea">
+    <div id="bucket"></div>
+  </div>
+  <div id="factBox"></div>
+  <button id="restartBtn" style="display:none;">Restart</button>
+
+  <script>
+    // Game variables
+    const gameArea = document.getElementById('gameArea');
+    const bucket = document.getElementById('bucket');
+    const scoreboard = document.getElementById('score');
+    const missboard = document.getElementById('misses');
+    const factBox = document.getElementById('factBox');
+    const restartBtn = document.getElementById('restartBtn');
+
+    const bucketWidth = 80;
+    let bucketLeft = 135; // initial left
+    let score = 0;
+    let misses = 0;
+    let isGameOver = false;
+    let dropInterval;
+    let drops = [];
+    let facts = [
+      "771 million people lack access to clean water. (charity: water)",
+      "Access to clean water improves health, education, and opportunity.",
+      "Women and girls spend 200 million hours every day collecting water.",
+      "Every $40 can give one person clean water for life.",
+      "Clean water can reduce water-related diseases by 80%."
+    ];
+
+    // Move bucket with arrows
+    document.addEventListener('keydown', function(e) {
+      if(isGameOver) return;
+      if(e.key === "ArrowLeft" || e.key === "a") {
+        bucketLeft = Math.max(0, bucketLeft - 28);
+        bucket.style.left = bucketLeft + 'px';
+      }
+      if(e.key === "ArrowRight" || e.key === "d") {
+        bucketLeft = Math.min(gameArea.clientWidth - bucketWidth, bucketLeft + 28);
+        bucket.style.left = bucketLeft + 'px';
+      }
+    });
+
+    // Drop logic (updated)
+    function createDrop() {
+      if(isGameOver) return;
+      const drop = document.createElement('div');
+      drop.className = 'drop';
+      // Random left position
+      let left = Math.floor(Math.random() * (gameArea.clientWidth - 28));
+      drop.style.left = left + 'px';
+      drop.style.top = '-32px';
+      gameArea.appendChild(drop);
+
+      let top = -32;
+    let fallSpeed = 0.8 + Math.random() * 0.7; // 0.8–1.5 px per frame
+      let caught = false;
+
+      // Calculate bucket Y coordinates
+      let bucketTop = gameArea.clientHeight - 10 - 40;
+      let bucketBottom = gameArea.clientHeight - 10;
+
+      function fall() {
+        if(isGameOver) {
+          drop.remove();
+          return;
+        }
+        top += fallSpeed;
+        drop.style.top = top + 'px';
+
+        // Drop bottom position
+        let dropBottom = top + 28;
+        // Drop left/right for collision
+        let dropLeft = left;
+        let dropRight = left + 28;
+        let bucketRight = bucketLeft + bucketWidth;
+
+        // Catch detection (drop touches any part of bucket)
+        if(dropBottom >= bucketTop && dropBottom <= bucketBottom) {
+          if(dropRight > bucketLeft && dropLeft < bucketRight) {
+            caught = true;
+            score++;
+            scoreboard.textContent = "Score: " + score;
+            drop.remove();
+            // Show fact every 5 catches
+            if(score % 5 === 0) showFact();
+            return;
+          }
+        }
+        // Miss detection (drop falls past bucket bottom)
+        if(dropBottom > gameArea.clientHeight && !caught) {
+          misses++;
+          missboard.textContent = "Misses: " + misses + " / 5";
+          drop.remove();
+          if(misses >= 5) endGame();
+          return;
+        }
+        requestAnimationFrame(fall);
+      }
+      fall();
+    }
+
+    // Dropper
+    function startDropping() {
+      dropInterval = setInterval(() => {
+        if(!isGameOver) createDrop();
+      }, 1600);
+    }
+
+    function endGame() {
+      isGameOver = true;
+      clearInterval(dropInterval);
+      showFact("Game Over!<br>Your score: " + score +
+        "<br><br>Learn more or donate at <a href='https://charitywater.org' target='_blank'>charitywater.org</a>");
+      restartBtn.style.display = "inline-block";
+    }
+
+    function showFact(text) {
+      factBox.style.display = "block";
+      factBox.innerHTML = text || facts[Math.floor(Math.random()*facts.length)] +
+        "<br><br><button id='closeFact'>OK</button>";
+      const btn = document.getElementById('closeFact');
+      if(btn) btn.onclick = () => { factBox.style.display = "none"; };
+      else setTimeout(()=>factBox.style.display="none", 2800);
+    }
+
+    restartBtn.onclick = () => {
+      score = 0;
+      misses = 0;
+      isGameOver = false;
+      bucketLeft = 135;
+      bucket.style.left = bucketLeft + 'px';
+      scoreboard.textContent = "Score: 0";
+      missboard.textContent = "Misses: 0 / 5";
+      restartBtn.style.display = "none";
+      // Remove stray drops
+      document.querySelectorAll('.drop').forEach(el => el.remove());
+      factBox.style.display = "none";
+      startDropping();
+    };
+
+    // Start the game
+    startDropping();
+  </script>
 </body>
 </html>
