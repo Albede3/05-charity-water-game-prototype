@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>Water Drop Catch - Charity: Water</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
+    html, body {
+      width: 100vw;
+      min-height: 100vh;
+      overscroll-behavior: contain;
+      touch-action: none;
+    }
     body {
       background: #fdfbf3;
       display: flex;
@@ -16,6 +22,9 @@
     h1 {
       color: #009edb;
       margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 2em;
+      text-align: center;
     }
     #gameArea {
       position: relative;
@@ -28,6 +37,7 @@
       box-shadow: 0 6px 24px #009edb33;
       margin-bottom: 12px;
       display: none;
+      touch-action: none;
     }
     #bucket {
       position: absolute;
@@ -40,6 +50,7 @@
       left: 135px;
       box-shadow: 0 2px 8px #ffd60066;
       transition: left 0.05s;
+      touch-action: none;
     }
     .drop {
       position: absolute;
@@ -59,6 +70,7 @@
       font-size: 1.15rem;
       margin-bottom: 12px;
       display: none;
+      justify-content: center;
     }
     #factBox {
       background: #fffde7;
@@ -114,13 +126,54 @@
       z-index: 5;
       opacity: 0.96;
     }
+    .mobile-controls {
+      display: none;
+      width: 100%;
+      max-width: 350px;
+      justify-content: space-between;
+      gap: 6vw;
+      margin-top: 0px;
+      margin-bottom: 10px;
+      user-select: none;
+      z-index: 12;
+    }
+    .arrow-btn {
+      flex: 1 1 0px;
+      min-width: 44px;
+      min-height: 44px;
+      background: #ffd600;
+      color: #009edb;
+      border: 3px solid #009edb;
+      border-radius: 50%;
+      font-size: 2.4em;
+      font-weight: bold;
+      line-height: 1;
+      margin: 0 20px;
+      box-shadow: 0 2px 8px #ffd60055;
+      cursor: pointer;
+      touch-action: manipulation;
+      opacity: 0.98;
+    }
+    .arrow-btn:active { background: #ffe750; }
+    @media (max-width: 600px) {
+      #gameArea {
+        width: 98vw;
+        height: 66vw;
+        min-height: 60vw;
+        max-width: 98vw;
+        max-height: 90vw;
+      }
+      .mobile-controls {
+        display: flex;
+      }
+      h1 { font-size: 1.3em; }
+    }
     @media (max-width: 400px) {
-      #gameArea { width: 98vw; height: 66vw; min-height: 320px; }
-      #bucket { width: 20vw; height: 10vw; min-width: 50px; min-height: 22px; }
+      #gameArea { min-height: 320px; }
+      #bucket { min-width: 50px; min-height: 22px; }
       #resetBtn { font-size: 0.9em; padding: 7px 8px; }
     }
   </style>
-  <!-- Confetti CDN -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 </head>
 <body>
@@ -132,6 +185,11 @@
   <div id="gameArea">
     <div id="bucket"></div>
     <button id="resetBtn">Reset</button>
+  </div>
+  <!-- Mobile touch controls -->
+  <div class="mobile-controls" id="mobileControls">
+    <button class="arrow-btn" id="leftBtn" aria-label="Left">&larr;</button>
+    <button class="arrow-btn" id="rightBtn" aria-label="Right">&rarr;</button>
   </div>
   <div id="factBox"></div>
   <button id="restartBtn">Restart</button>
@@ -148,8 +206,11 @@
     const restartBtn = document.getElementById('restartBtn');
     const resetBtn = document.getElementById('resetBtn');
     const startBtn = document.getElementById('startBtn');
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+    const mobileControls = document.getElementById('mobileControls');
 
-    const bucketWidth = 80;
+    let bucketWidth = 80;
     let bucketLeft = 135; // initial left
     let score = 0;
     let misses = 0;
@@ -165,16 +226,90 @@
       "Clean water can reduce water-related diseases by 80%."
     ];
 
-    // Move bucket with arrows
+    // Resize bucket/game for mobile dynamically
+    function updateDimensions() {
+      bucketWidth = bucket.offsetWidth;
+      // keep bucket in bounds if resized
+      bucketLeft = Math.max(0, Math.min(gameArea.clientWidth - bucketWidth, bucketLeft));
+      bucket.style.left = bucketLeft + 'px';
+    }
+    window.addEventListener('resize', updateDimensions);
+
+    // Move bucket with keys or controls
+    function moveBucket(direction) {
+      if(isGameOver || !gameStarted) return;
+      const maxLeft = gameArea.clientWidth - bucketWidth;
+      if(direction === "left") {
+        bucketLeft = Math.max(0, bucketLeft - Math.max(22, bucketWidth*0.34));
+      } else if(direction === "right") {
+        bucketLeft = Math.min(maxLeft, bucketLeft + Math.max(22, bucketWidth*0.34));
+      }
+      bucket.style.left = bucketLeft + 'px';
+    }
+
+    // Touch buttons for mobile
+    leftBtn.addEventListener('touchstart', function(e) { e.preventDefault(); moveBucket("left"); });
+    rightBtn.addEventListener('touchstart', function(e) { e.preventDefault(); moveBucket("right"); });
+    // (support tap as fallback)
+    leftBtn.addEventListener('click', function(e) { moveBucket("left"); });
+    rightBtn.addEventListener('click', function(e) { moveBucket("right"); });
+
+    // Drag bucket with finger
+    let dragging = false, dragOffsetX = 0;
+    gameArea.addEventListener('touchstart', function(e){
+      if(isGameOver || !gameStarted) return;
+      const touch = e.touches[0];
+      const rect = gameArea.getBoundingClientRect();
+      let x = touch.clientX - rect.left;
+      // If touch is near bucket, start drag
+      if(x > bucketLeft && x < bucketLeft + bucketWidth) {
+        dragging = true;
+        dragOffsetX = x - bucketLeft;
+        e.preventDefault();
+      }
+    }, {passive:false});
+    gameArea.addEventListener('touchmove', function(e){
+      if(!dragging) return;
+      const touch = e.touches[0];
+      const rect = gameArea.getBoundingClientRect();
+      let x = touch.clientX - rect.left;
+      let newLeft = Math.max(0, Math.min(gameArea.clientWidth - bucketWidth, x - dragOffsetX));
+      bucketLeft = newLeft;
+      bucket.style.left = bucketLeft + 'px';
+      e.preventDefault();
+    }, {passive:false});
+    gameArea.addEventListener('touchend', function(){ dragging = false; });
+
+    // Mouse drag for desktop
+    let mouseDragging = false, mouseOffsetX = 0;
+    gameArea.addEventListener('mousedown', function(e){
+      if(isGameOver || !gameStarted) return;
+      const rect = gameArea.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      if(x > bucketLeft && x < bucketLeft + bucketWidth) {
+        mouseDragging = true;
+        mouseOffsetX = x - bucketLeft;
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('mousemove', function(e){
+      if(!mouseDragging) return;
+      const rect = gameArea.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      let newLeft = Math.max(0, Math.min(gameArea.clientWidth - bucketWidth, x - mouseOffsetX));
+      bucketLeft = newLeft;
+      bucket.style.left = bucketLeft + 'px';
+      e.preventDefault();
+    });
+    window.addEventListener('mouseup', function(){ mouseDragging = false; });
+
     document.addEventListener('keydown', function(e) {
       if(isGameOver || !gameStarted) return;
       if(e.key === "ArrowLeft" || e.key === "a") {
-        bucketLeft = Math.max(0, bucketLeft - 28);
-        bucket.style.left = bucketLeft + 'px';
+        moveBucket("left");
       }
       if(e.key === "ArrowRight" || e.key === "d") {
-        bucketLeft = Math.min(gameArea.clientWidth - bucketWidth, bucketLeft + 28);
-        bucket.style.left = bucketLeft + 'px';
+        moveBucket("right");
       }
     });
 
@@ -182,10 +317,8 @@
     function createDrop() {
       if(isGameOver) return;
       const drop = document.createElement('div');
-      // 30% chance for polluted drop
       const isPolluted = Math.random() < 0.3;
       drop.className = 'drop' + (isPolluted ? ' polluted' : '');
-      // Random left position
       let left = Math.floor(Math.random() * (gameArea.clientWidth - 28));
       drop.style.left = left + 'px';
       drop.style.top = '-32px';
@@ -195,15 +328,11 @@
       let fallSpeed = 0.6 + Math.random() * 0.9;
       let caught = false;
 
-      // Calculate bucket Y coordinates
       let bucketTop = gameArea.clientHeight - 10 - 40;
       let bucketBottom = gameArea.clientHeight - 10;
 
       function fall() {
-        if(isGameOver) {
-          drop.remove();
-          return;
-        }
+        if(isGameOver) { drop.remove(); return; }
         top += fallSpeed;
         drop.style.top = top + 'px';
 
@@ -217,7 +346,6 @@
           celebrateWin();
           return;
         }
-
         // Catch detection
         if(dropBottom >= bucketTop && dropBottom <= bucketBottom) {
           if(dropRight > bucketLeft && dropLeft < bucketRight) {
@@ -241,7 +369,7 @@
         }
         // Miss detection (drop falls past bucket bottom)
         if(dropBottom > gameArea.clientHeight && !caught) {
-          if (!isPolluted) { // Only clean drops count as a miss
+          if (!isPolluted) {
             misses++;
             missboard.textContent = "Misses: " + misses + " / 5";
             if(misses >= 5) endGame();
@@ -249,7 +377,6 @@
           drop.remove();
           return;
         }
-
         requestAnimationFrame(fall);
       }
       fall();
@@ -259,7 +386,7 @@
       isGameOver = true;
       hasCelebrated = true;
       clearInterval(dropInterval);
-      showResetBtn(false); // Hide reset on win
+      showResetBtn(false);
       factBox.style.display = "block";
       factBox.innerHTML =
         "<span style='font-size:1.3em;font-weight:bold;color:#009edb;'>🎉 You Win! 🎉</span><br>Your score: 100<br><br>You're a water hero!<br><br>Learn more or donate at <a href='https://charitywater.org' target='_blank'>charitywater.org</a>" +
@@ -271,13 +398,7 @@
           restartGame();
         };
       }, 50);
-
-      // Confetti effect!
-      confetti({
-        particleCount: 120,
-        spread: 90,
-        origin: { y: 0.5 }
-      });
+      confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
       setTimeout(() => {
         confetti({ particleCount: 100, spread: 60, origin: { x: 0.25, y: 0.6 }});
         confetti({ particleCount: 100, spread: 60, origin: { x: 0.75, y: 0.6 }});
@@ -287,7 +408,7 @@
     function endGame() {
       isGameOver = true;
       clearInterval(dropInterval);
-      showResetBtn(false); // Hide reset on lose
+      showResetBtn(false);
       factBox.style.display = "block";
       factBox.innerHTML =
         "Game Over!<br>Your score: " + score +
@@ -329,7 +450,7 @@
       misses = 0;
       isGameOver = false;
       hasCelebrated = false;
-      bucketLeft = 135;
+      bucketLeft = (gameArea.clientWidth-bucket.offsetWidth)/2;
       bucket.style.left = bucketLeft + 'px';
       scoreElem.textContent = "Score: 0";
       missboard.textContent = "Misses: 0 / 5";
@@ -340,14 +461,12 @@
     }
 
     function resetGame() {
-      // Exactly the same as restart, but only if not game over
-      if (!isGameOver) {
-        restartGame();
-      }
+      if (!isGameOver) restartGame();
     }
 
     function showResetBtn(show) {
       resetBtn.style.display = show ? 'block' : 'none';
+      mobileControls.style.display = show ? 'flex' : 'none';
     }
 
     restartBtn.onclick = restartGame;
@@ -363,7 +482,8 @@
       isGameOver = false;
       hasCelebrated = false;
       gameStarted = true;
-      bucketLeft = 135;
+      updateDimensions();
+      bucketLeft = (gameArea.clientWidth-bucket.offsetWidth)/2;
       bucket.style.left = bucketLeft + 'px';
       scoreElem.textContent = "Score: 0";
       missboard.textContent = "Misses: 0 / 5";
@@ -376,13 +496,18 @@
     scoreboard.style.display = "none";
     gameArea.style.display = "none";
     restartBtn.style.display = "none";
-    // Start button shown by default
 
     function startDropping() {
+      updateDimensions();
       dropInterval = setInterval(() => {
         if(!isGameOver) createDrop();
       }, 1600);
     }
+
+    // On mobile, prevent double tap zoom
+    document.addEventListener('touchstart', function(e) {
+      if (e.touches.length > 1) { e.preventDefault(); }
+    }, { passive: false });
   </script>
 </body>
 </html>
